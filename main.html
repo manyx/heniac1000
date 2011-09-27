@@ -1,0 +1,402 @@
+<html>
+<head> 
+    <title>Main</title>
+	<link rel="StyleSheet" href="/css/my.css" type="text/css">
+    <style>
+
+    </style> 
+    <script type="text/javascript" src="/_ah/channel/jsapi"></script>
+</head> 
+<body>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js"></script>
+<script src="/js/myutil.js"></script>
+<script src="/js/json2.js"></script>
+<script>
+
+function runSessions() {
+    onSessionsUpdate = function () {
+        $.get('/api/getSessions', {me : username}, load)
+    }
+    onSessionsUpdate()
+    function load(s) {
+        sessions = JSON.parse(s)
+        currentSession = null
+        
+        var div = $('#sessionsTemplate').clone().show()
+        
+        div.append($('<button/>').text('add session').click(function () {
+            var title = prompt("session name:")
+            if (title) {
+                $.post('/api/createSession', {me : username, title : title}, load)
+            }
+        }))
+        function strcmp(a, b) {
+            return (b < a) - (a < b)
+        }
+        sessions.sort(function (a, b) {
+            return strcmp(a.title, b.title)
+        })
+        foreach(sessions, function (s) {
+            var d = $('<div/>').text(s.title)
+            if (s.current) {
+                d.css('font-weight', 'bold')
+                currentSession = s
+            } else {
+                d.css('cursor', 'pointer').css('color', 'blue').click(function () {
+                    $.post('/api/enterSession', {me : username, session : s.key}, load)
+                })
+            }
+            div.append(d)
+        })
+        
+        $('#sessions').empty().append(div)
+        
+        // current session...
+        var div = $('#sessionTemplate').clone().show()
+        
+        function addMessage(m) {
+            var d = $('<div/>')
+            d.append($('<span/>').text(m.user.username).css('font-weight', 'bold').css('font-size', 'small'))
+            d.append($('<span/>').text(' : ').css('font-size', 'small'))
+            d.append($('<span/>').text(m.text))
+            $('.messages', div).append(d)
+        }
+        
+        foreach(currentSession.messages, function (m) {
+            addMessage(m)
+        })
+        
+        channelCallbacks["message"] = function (data) {
+            addMessage(data)
+        }
+        
+        $('.send', div).click(function () {
+            $.post('/api/sendMessage', {
+                me : username,
+                message : $('.message', div).val()
+            })
+            $('.message', div).val("")
+        })
+        $('.message', div).keypress(function (e) {
+            if (e.keyCode == 13) {
+                $('.send', div).click()
+            }
+        })
+        
+        $('#session').empty().append(div)
+        
+        setTimeout(function () {
+            $('.message', div).select().focus()
+        }, 0)
+    }
+}
+</script>
+    <div id="sessionsTemplate" style="display:none;width:150px;height:100%;background-color:lightgrey">
+    </div>
+    
+    <div id="sessionTemplate" style="display:none" class="fill">
+        <table class="fill">
+            <tr style="height:100%;"><td valign="top">
+                <div style="overflow:auto" class="fill">
+                    <div class="messages"></div>
+                </div>
+            </td></tr>
+            <tr><td>
+                <table class="fill">
+                    <tr>
+                        <td style="width:100%">
+                            <input type="text" class="message" style="width:100%"></input>
+                        </td>
+                        <td>
+                            <button class="send">send</button>
+                        </td>
+                    </tr>
+                </table>
+            </td></tr>
+        </table>
+    </div>
+<script>
+
+function runReservations() {
+    $.get('/api/getReservations', {me : username}, function (s) {
+        load(s)
+    })
+    function load(s) {
+        var res = JSON.parse(s)
+        
+        var gmtOffset = getGmtOffset()
+        
+        var hourSpan = 1000 * 60 * 60
+        var nowHour = Math.floor(time() / hourSpan) + gmtOffset
+        var endHour = nowHour + res.windowSize
+        var todayHour = Math.floor(nowHour / 24) * 24
+        
+        var resMap = {}
+        foreach(res.all, function (r) {
+            resMap[r.hour + gmtOffset] = r.count
+        })
+        foreach(res.myHours, function (h) {
+            resMap[h + gmtOffset] = -1
+        })
+        
+        function englishHour(h) {
+            if (h == 0) return [12, "am"]
+            if (h < 12) return [h, "am"]
+            h -= 12
+            if (h == 0) return [12, "pm"]
+            return [h, "pm"]
+        }
+        function englishDay(day) {
+            if (day < 3)
+                return ["today", "tomorrow", "next day"][day]
+            else
+                return "etc..."
+        }
+        
+        var div = $('#reservationsTemplate').clone().show()
+        
+        var rr = $('.remainingReservation', div)
+        $('.remainingReservations', div).empty()
+        var numAvailable = res.maxHours - res.myHours.length
+        for (var i = 0; i < numAvailable; i++) {
+            $('.remainingReservations', div).append(rr.clone())
+        }
+        if (numAvailable <= 0) {
+            $('.remainingReservations', div).text("none remaining. click an existing reservation to cancel it.")
+        } else {
+            $('.remainingReservations', div).append($('<span/>').text(". click a cell below to reserve it."))
+        }
+        
+        var tt = $('.timeTable', div)
+        for (var day = -1; ; day++) {
+            var reachedEnd = false
+            var row = $('<tr/>')
+            for (var hour = -1; hour < 24; hour++) {
+                var cell = $('<td/>')
+                if (day < 0 && hour < 0) {
+                    cell.append($('<button/>').text("refresh").click(function () {
+                        $.get('/api/getReservations', {me : username}, load)
+                    }))
+                }
+                if (day < 0 && hour >= 0) {
+                    cell.css('width', '04.16666667%')
+                    x = englishHour(hour)
+                    cell.append($('<span/>').text(x[0]).css('font-size', 'small'))
+                    cell.append($('<span/>').text(x[1]).css('font-size', 'xx-small'))
+                    if (nowHour == todayHour + hour) {
+                        cell.css("background-color", "gold")
+                    }
+                }
+                if (hour < 0 && day >= 0) {
+                    cell.text(englishDay(day))
+                }
+                if (day >= 0 && hour >= 0) {
+                    cell.css('border', '1px solid')
+                    var h = todayHour + (day * 24) + hour
+                    if (h == endHour - 1)
+                        reachedEnd = true
+                    var available = 0
+                    if (h < nowHour || h >= endHour) {
+                        cell.css('background-color', 'darkgrey')
+                    } else if (!resMap[h]) {
+                        cell.css('background-color', 'white')
+                        available = 1
+                    } else if (resMap[h] < 0) {
+                        cell.css('background-color', 'red')
+                        available = -1
+                    } else if (resMap[h] == 1) {
+                        cell.css('background-color', 'lightblue')
+                        available = 1
+                    } else if (resMap[h] == 2) {
+                        cell.css('background-color', 'blue')
+                    }
+                    if (available == 1) {
+                        if (numAvailable > 0) {
+                            ;(function (h) {
+                                cell.click(function () {
+                                    $.post('/api/reserve', {
+                                        me : username,
+                                        hour : h - gmtOffset
+                                    }, load)
+                                })
+                            })(h);
+                        } else {
+                            cell.click(function () {
+                                alert("too many reservations already. click an existing one to cancel it, so you can put it somewhere else.")
+                            })
+                        }
+                    } else if (available == -1) {
+                        ;(function (h) {
+                            cell.click(function () {
+                                $.post('/api/unreserve', {
+                                    me : username,
+                                    hour : h - gmtOffset
+                                }, load)
+                            })
+                        })(h);
+                    }
+                }
+                row.append(cell)
+            }
+            tt.append(row)
+            if (reachedEnd)
+                break
+        }
+        $('#reservations').empty().append(div)
+    }
+}
+</script>
+    <div id="reservationsTemplate" class="fill" style="display:none">
+        <table class="fill">
+            <tr style="height:100%"><td>
+                <table class="timeTable fill"></table>
+            </td></tr>
+            <tr><td>
+                <div style="height:25px;margin-left:100px;margin-top:5px">
+                    available: <span style="background-color:white;border:1px solid">&nbsp;&nbsp;&nbsp;</span><span style="background-color:lightblue;border:1px solid">&nbsp;&nbsp;&nbsp;</span>,
+                    taken: <span style="background-color:blue;border:1px solid">&nbsp;&nbsp;&nbsp;</span>,
+                    your remaining reservations: <span class="remainingReservations"><span class="remainingReservation" style="background-color:red;border:1px solid">&nbsp;&nbsp;&nbsp;</span></span>                  
+                </div>
+            </td></tr>
+        </table>
+    </div>
+<script>
+
+function runUsers() {
+    onUsersUpdate = function () {
+        $.get('/api/getUsers', {me : username}, load)
+    }
+    onUsersUpdate()
+    function load(s) {
+        var users = JSON.parse(s)
+        var me = users.me
+        
+        var div = $('#usersTemplate').clone().show()
+        
+        $('.' + me.status.replace(/Reserved/, '') + ' input', div).attr('checked', 'checked')
+        $('.working', div).css('cursor', 'pointer').click(function () {
+            $.post('/api/setStatus', {me : username, status : "working"}, load)
+        })
+        $('.available', div).css('cursor', 'pointer').click(function () {
+            $.post('/api/setStatus', {me : username, status : "available"}, load)
+        })
+        $('.gone', div).css('cursor', 'pointer').click(function () {
+            $.post('/api/setStatus', {me : username, status : "gone"}, load)
+        })
+        
+        foreach(users.available, function (u) {
+                $('.availableUsers', div).append($('<div style="font-size:small;font-weight:bold" />').text(u.username))
+        })
+        
+        $('.summon', div).click(function () {
+            $.post('/api/summon', {me : username})
+        })
+        channelCallbacks["summons"] = function () {
+            alert("we are being summoned")
+            $.post('/api/answerSummons', {me : username}, function (s) {
+                var wasSummoned = JSON.parse(s)
+                if (wasSummoned) {
+                    onUsersUpdate()
+                    onSessionsUpdate()
+                } else {
+                    alert("someone else got it.. alas")
+                }
+            })
+        }
+        channelCallbacks["summonsFail"] = function () {
+            alert("failed to answer summons. assuming you are gone.")
+            onUsersUpdate()
+        }
+        
+        $('#users').empty().append(div)
+    }
+}
+</script>
+    <div id="usersTemplate" style="display:none;width:150px;height:100%;background-color:lightgrey">
+        <div>
+            <div class="working"><input type="radio" name="status"/> working</div>
+            <div class="available"><input type="radio" name="status"/> available</div>
+            <div class="gone"><input type="radio" name="status"/> gone</div>
+        </div>
+        <div style="margin-top:32px">
+            <div>available queue:</div>
+            <div class="availableUsers"></div>
+            <div style="margin-top:10px"><button class="summon">summon to current session</button></div>
+        </div>
+    </div>
+<script>
+
+channelCallbacks = {}
+
+function runChannel() {
+    $.get('/api/getChannel', {me : username}, load)
+    function load(s) {
+        
+        // work here
+        // $('body').prepend($('<div/>').text("no channel"))
+        // return
+        
+        jso = JSON.parse(s)
+        var c = new goog.appengine.Channel(jso.token)
+        var s = c.open()
+        s.onopen = function () {
+        }
+        s.onmessage = function (m) {
+            var jso = JSON.parse(m.data)
+            var func = channelCallbacks[jso.type]
+            if (func)
+                func(jso.data)
+        }
+        s.onclose = function (m) {
+            $.get('/api/getChannel', {me : username}, load)
+        }
+    }
+}
+
+$(function () {
+    $('body').ajaxError(function (_, s) {
+        var err = s.responseText
+        var m = err.match(/Exception: (.*)/)
+        if (m) {
+            err = m[1]
+        }
+        if (err.length > 1000) {
+            err = "..." + err.substring(err.length - 1000)
+        }
+        alert("error: " + err)
+    })
+    
+    username = getUrlParams()["me"] || {{username}}
+    logoutUrl = {{logoutUrl}}
+    
+    runSessions()
+    runReservations()
+    runUsers()
+    runChannel()
+})
+
+</script>
+
+<table class="fill">
+    <tr style="height:100%"><td>
+        <table class="fill">
+            <tr>
+                <td>
+                    <div id="sessions" class="fill"></div>
+                </td>
+                <td style="width:100%">
+                    <div id="session" class="fill"></div>
+                </td>
+                <td>
+                    <div id="users" class="fill"></div>
+                </td>
+            </tr>
+        </table>
+    </td></tr>
+    <tr><td>
+        <div id="reservations" class="fill"></div>
+    </td></tr>
+</table>
+
+</body>
+</html>
