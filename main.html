@@ -188,7 +188,7 @@ function runReservations() {
         if (numAvailable <= 0) {
             $('.remainingReservations', div).text("none remaining. click an existing reservation to cancel it.")
         } else {
-            $('.remainingReservations', div).append($('<span/>').text(". click a cell below to reserve it."))
+            $('.remainingReservations', div).append($('<span/>').text(". click a cell above to reserve it."))
         }
         
         var tt = $('.timeTable', div)
