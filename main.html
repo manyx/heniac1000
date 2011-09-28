@@ -9,10 +9,31 @@
 </head> 
 <body>
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js"></script>
+<link rel="stylesheet" href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.8/themes/base/jquery-ui.css" type="text/css" media="all" />
+<link rel="stylesheet" href="http://static.jquery.com/ui/css/demo-docs-theme/ui.theme.css" type="text/css" media="all" />
+
+<script src="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8.7/jquery-ui.min.js" type="text/javascript"></script>
 <script src="/js/myutil.js"></script>
 <script src="/js/json2.js"></script>
 <script>
 
+$(document).ready(function(){
+
+$("#formDialog").dialog({
+			width: 600,
+			height: 250,
+			modal: true,
+			zIndex: 9999,
+			autoOpen: false,
+			draggable: false,
+			resizable: false,
+			show: "blind",
+			hide: "blind"
+			
+		});
+        
+});
+       
 function runSessions() {
     onSessionsUpdate = function () {
         $.get('/api/getSessions', {me : username}, load)
@@ -29,6 +50,9 @@ function runSessions() {
             if (title) {
                 $.post('/api/createSession', {me : username, title : title}, load)
             }
+            $("#formDialog").html ('<h1>Session "' + title +'" created</h1>');
+            $("#formDialog").dialog("open");
+            var closeTimeout = setTimeout(function() { $( "#formDialog" ).dialog( "close" ); }, 900);
         }))
         function strcmp(a, b) {
             return (b < a) - (a < b)
@@ -222,7 +246,9 @@ function runReservations() {
                             })(h);
                         } else {
                             cell.click(function () {
-                                alert("too many reservations already. click an existing one to cancel it, so you can put it somewhere else.")
+                                $("#formDialog").html ('<h2>too many reservations already. click an existing one to cancel it, so you can put it somewhere else.</h2>');
+                                $("#formDialog").dialog("open");
+                                //alert("too many reservations already. click an existing one to cancel it, so you can put it somewhere else.")
                             })
                         }
                     } else if (available == -1) {
@@ -292,19 +318,26 @@ function runUsers() {
             $.post('/api/summon', {me : username})
         })
         channelCallbacks["summons"] = function () {
-            alert("we are being summoned")
+            $("#formDialog").html ('<h2>we are being summoned</h2>');
+            $("#formDialog").dialog("open");
+            //alert("we are being summoned")
             $.post('/api/answerSummons', {me : username}, function (s) {
                 var wasSummoned = JSON.parse(s)
                 if (wasSummoned) {
                     onUsersUpdate()
                     onSessionsUpdate()
                 } else {
-                    alert("someone else got it.. alas")
+                    $("#formDialog").html ('<h2>someone else got it.. alas</h2>');
+                    $("#formDialog").dialog("open");
+                    //alert("someone else got it.. alas")
                 }
             })
         }
         channelCallbacks["summonsFail"] = function () {
-            alert("failed to answer summons. assuming you are gone.")
+            $("#formDialog").html ('<h2>failed to answer summons. assuming you are gone.</h2>');
+            $("#formDialog").dialog("open");
+            var closeTimeout = setTimeout(function() { $( "#formDialog" ).dialog( "close" ); }, 600);
+            //alert("failed to answer summons. assuming you are gone.")
             onUsersUpdate()
         }
         
@@ -363,7 +396,9 @@ $(function () {
         if (err.length > 1000) {
             err = "..." + err.substring(err.length - 1000)
         }
-        alert("error: " + err)
+        $("#formDialog").html ('<h2>error: ' + err+'</h2>');
+        $("#formDialog").dialog("open");
+        //alert("error: " + err)
     })
     
     username = getUrlParams()["me"] || {{username}}
@@ -397,6 +432,8 @@ $(function () {
         <div id="reservations" class="fill"></div>
     </td></tr>
 </table>
-
+ <div id="formDialog">
+ 
+ </div>
 </body>
 </html>
