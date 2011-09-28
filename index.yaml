@@ -15,6 +15,11 @@ indexes:
   - name: session
   - name: createTime
 
+- kind: Portal
+  properties:
+  - name: hasUsesLeft
+  - name: deadline
+
 - kind: Reservation
   properties:
   - name: user
@@ -30,9 +35,3 @@ indexes:
   properties:
   - name: status
   - name: statusTime
-  
-- kind: Portal
-  properties:
-  - name: hasUsesLeft
-  - name: deadline
-
