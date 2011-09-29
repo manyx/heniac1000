@@ -154,12 +154,10 @@ def getMessageJso(m):
     }
 
 def getMessages(s):
-    toDisplay = 100
-    messages = Message.gql("where session = :session order by createTime", session = s).count()
-    offset = 0;
-    if (messages - toDisplay) > 0:
-        offset = messages - toDisplay
-    return [getMessageJso(m) for m in Message.gql("where session = :session order by createTime limit  " + str(offset) + ", " + str(toDisplay), session = s)]
+    toDisplay = '100'
+    messages = [getMessageJso(m) for m in Message.gql("where session = :session order by createTime DESC limit "+toDisplay, session = s)]
+    messages.reverse()
+    return messages
 
 def getSessionJso(u, s):
     jso = {

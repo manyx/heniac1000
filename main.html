@@ -3,7 +3,7 @@
     <title>Main</title>
 	<link rel="StyleSheet" href="/css/my.css" type="text/css">
     <style>
-
+      
     </style> 
     <script type="text/javascript" src="/_ah/channel/jsapi"></script>
 </head> 
@@ -16,7 +16,6 @@
 <script src="/js/myutil.js"></script>
 <script src="/js/json2.js"></script>
 <script>
-
 $(document).ready(function(){
 
 $("#formDialog").dialog({
@@ -31,6 +30,8 @@ $("#formDialog").dialog({
 			hide: "blind"
 			
 		});
+        
+       
         
 $("#closeDialog").live("click", function(){
     $("#formDialog").dialog("close");
@@ -126,13 +127,13 @@ function runSessions() {
         <div class="fill">
             <div style="height:100%;">
                 <div class="messageWrapper" style="overflow:auto" class="fill">
-                    <div class="messages"></div>
+                    <div class="messages" ></div>
                 </div>
             </div>
             
             <div class="fill" style="position:relative;height:23px; bottom:23px;">                    
-                        <input type="text" class="message" style="width: 100%; padding-right: 60px;"></input>
-                        <button class="send" style="position: relative; float: right;margin-left:-60px;margin-top:-1px">send</button>              
+                        <input type="text" class="message" style="position:absolute;bottom:0;height:23px;left:0;width:100%"></input>
+                        <button class="send" style="position: absolute; bottom:0; right:0;height:23px;">send</button>              
             </div>
             
         </div>
@@ -299,10 +300,11 @@ function runUsers() {
     function load(s) {
         var users = JSON.parse(s)
         var me = users.me
-        
+        console.log(users)
         var div = $('#usersTemplate').clone().show()
         
         $('.' + me.status.replace(/Reserved/, '') + ' input', div).attr('checked', 'checked')
+        
         $('.working', div).css('cursor', 'pointer').click(function () {
             $.post('/api/setStatus', {me : username, status : "working"}, load)
         })
@@ -314,7 +316,10 @@ function runUsers() {
         })
         
         foreach(users.available, function (u) {
-                $('.availableUsers', div).append($('<div style="font-size:small;font-weight:bold" />').text(u.username))
+                if (u.status == "availableReserved")
+                    $('.availableUsers', div).append($('<div style="font-size:small;font-weight:bold" />').text("*"+u.username))
+                else
+                    $('.availableUsers', div).append($('<div style="font-size:small;font-weight:bold" />').text(u.username))
         })
         
          $('.availableUsers', div).append($('<button/>').text("refresh").click(function () {
@@ -449,7 +454,8 @@ $(function () {
     <tr><td>
         <div id="reservations" class="fill"></div>
     </td></tr>
-</table>
+</table> 
+
  <div id="formDialog">
  
  </div>
