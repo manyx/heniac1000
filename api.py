@@ -116,8 +116,6 @@ def enterSession(u, s):
     sl = SessionLog(createTime = now, user = u, session = s)
     sl.put()
     
-    sendMessage(getUser("system"), s, u.username + " joined the session")
-    
     def func(uKey):
         u = User.get(uKey)
         u.session = s
@@ -156,7 +154,12 @@ def getMessageJso(m):
     }
 
 def getMessages(s):
-    return [getMessageJso(m) for m in Message.gql("where session = :session order by createTime", session = s)]
+    toDisplay = 100
+    messages = Message.gql("where session = :session order by createTime", session = s).count()
+    offset = 0;
+    if (messages - toDisplay) > 0:
+        offset = messages - toDisplay
+    return [getMessageJso(m) for m in Message.gql("where session = :session order by createTime limit  " + str(offset) + ", " + str(toDisplay), session = s)]
 
 def getSessionJso(u, s):
     jso = {
@@ -370,7 +373,6 @@ class Reservation(db.Model):
 class ReservationAgg(db.Model):
     hour = db.IntegerProperty()
     count = db.IntegerProperty(default=0)
-    reservationSet = db.TextProperty(default="")
 
 def getHour(t):
     return t // (1000 * 60 * 60)
@@ -383,6 +385,11 @@ def getReservationAggKeyName(hour):
 
 def getReservation(u, hour):
     return Reservation.get_by_key_name(getReservationKeyName(u, hour))
+
+def deleteReservation(u, hour):
+    r = getReservation(u, hour)
+    if r:
+        r.delete()
 
 def getReservationWindow():
     startHour = getHour(now)
@@ -397,49 +404,47 @@ def reserve(u, hour):
     win = getReservationWindow()
     if hour < win[0] or hour >= win[1]:
         raise BaseException("can't make reservations outside the reservation window from now until " + str(reservationWindowSize) + " hours from now")
-        
+    
     r_key_name = getReservationKeyName(u, hour)
     ra_key_name = getReservationAggKeyName(hour)
-    
     def func():
-        ra = ReservationAgg.get_by_key_name(ra_key_name)
-        if not ra:
-            ra = ReservationAgg(key_name = ra_key_name)
-            ra.hour = hour
-        if ra.count < 2 and ra.reservationSet.find(r_key_name) < 0:
-            ra.count += 1
-            ra.reservationSet += '#' + r_key_name
-            ra.put()
+        r = getReservation(u, hour)
+        if not r:
+            r = Reservation(key_name = r_key_name)
+            r.createTime = now
+            r.hour = hour
+            r.user = u
+            r.put()
             return True
     if db.run_in_transaction(func):
-        r = Reservation(key_name = r_key_name)
-        r.createTime = now
-        r.hour = hour
-        r.user = u
-        r.put()
-        
         if getMyReservations(u).count() > maxReservedHours:
-            unreserve(u, hour)
+            deleteReservation(u, hour)
             raise BaseException("too many hours reserved. your max is " + str(maxReservedHours))
-    else:
-        raise BaseException("too many reservations for this hour, or you already have a reservation here")
+        
+        def func():
+            ra = ReservationAgg.get_by_key_name(ra_key_name)
+            if not ra:
+                ra = ReservationAgg(key_name = ra_key_name)
+                ra.hour = hour
+            if ra.count < 2:
+                ra.count += 1
+                ra.put()
+                return True
+        if db.run_in_transaction(func):
+            return True
+        deleteReservation(u, hour)
+        raise BaseException("too many reservations for this hour")
+    raise BaseException("reservation already exists")
 
 def unreserve(u, hour):
-    r_key_name = getReservationKeyName(u, hour)
-    ra_key_name = getReservationAggKeyName(hour)
+    deleteReservation(u, hour)
     
     def func():
-        ra = ReservationAgg.get_by_key_name(ra_key_name)
-        if ra and ra.reservationSet.find(r_key_name) >= 0:
-            ra.count -= 1
-            ra.reservationSet = re.sub('#' + r_key_name, '', ra.reservationSet)
-            ra.put()
-            return True
-    if db.run_in_transaction(func):
-        getReservation(u, hour).delete()
-    else:
-        raise BaseException("no reservation here to remove")
-
+        ra = ReservationAgg.get_by_key_name(getReservationAggKeyName(hour))
+        ra.count -= 1
+        ra.put()
+    db.run_in_transaction(func)
+    
 def getReservationsJso(u):
     win = getReservationWindow()
     return {
@@ -448,14 +453,6 @@ def getReservationsJso(u):
         "maxHours" : maxReservedHours,
         "windowSize" : reservationWindowSize
     }
-
-@registerAPI("_fixReservations")
-def func(user):
-    for ra in ReservationAgg.all():
-        rs = ["#" + getReservationKeyName(r.user, r.hour) for r in Reservation.gql('where hour = :hour', hour = ra.hour)]
-        ra.count = len(rs)
-        ra.reservationSet = "".join(rs)
-        ra.put()
 
 @registerAPI("reserve")
 def func(user, hour):
